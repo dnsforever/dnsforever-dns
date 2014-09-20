@@ -1,0 +1,44 @@
+#! /usr/bin/env python
+
+import argparse
+
+from twisted.internet import reactor, task
+from twisted.names.dns import DNSDatagramProtocol
+from twisted.names.server import DNSServerFactory
+
+from dnsforever.authority import DnsforeverAuthority
+
+
+authority = DnsforeverAuthority('1.1.1.1')
+verbosity = 0
+
+factory = DNSServerFactory(authorities=[authority],
+                           verbose=verbosity)
+
+protocol = DNSDatagramProtocol(factory)
+factory.noisy = protocol.noisy = verbosity
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Run dnsforever domain name '
+                                                 'server.')
+    parser.add_argument('--port', '-p',
+                        type=int, default=53,
+                        help='Specifies the port on which the server listens '
+                             'for connections (default 53).')
+    parser.add_argument('--update', '-u',
+                        type=int, default=60,
+                        help='This option specifies the frequency in seconds at'
+                             'which server should update its records. '
+                             'The default is 60 seconds.')
+
+
+    args = parser.parse_args()
+
+    reactor.listenUDP(args.port, protocol)
+    reactor.listenTCP(args.port, factory)
+    if args.update <= 0:
+        authority.update()
+    else:
+        task.LoopingCall(lambda: authority.update()).start(args.update)
+    reactor.run()
