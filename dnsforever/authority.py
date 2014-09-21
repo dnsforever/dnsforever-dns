@@ -27,7 +27,9 @@ class DnsforeverAuthority(common.ResolverBase):
         self.zones = defaultdict(lambda: None)
 
     def update(self):
-        self.records = {}
+        self.delZone('dnsforever.kr')
+
+        self.addRecord('dnsforever.kr', 300, 'A', '@', 'IN', ['1.2.3.4'])
         self.addRecord('dnsforever.kr', 300, 'A', 'www', 'IN', ['1.2.3.4'])
         #self.addRecord('test.dnsforever.kr', 300, dns.A, 'www', 'IN', ['1.2.3.4'])
 
@@ -140,15 +142,39 @@ class DnsforeverAuthority(common.ResolverBase):
                 )
         return defer.succeed((results, authority, additional))
 
+    def lookupZone(self, name, timeout = 10):
+        name = name.lower()
+        soa = None
+        if self.zones[name]:
+            for record in self.zones[name]:
+                if isinstance(record, dns.SOA):
+                    soa = record
+                    break
+
+        if not soa:
+            return defer.fail(failure.Failure(dns.DomainError(name)))
+
+        results = [dns.RRHeader(name, dns.SOA, dns.IN, soa.ttl, soa, auth=True)]
+        for (k, r) in self.zones[name].items():
+            for rec in r:
+                if rec.TYPE != dns.SOA:
+                    results.append(dns.RRHeader(k, rec.TYPE, dns.IN, rec.ttl, rec, auth=True))
+        results.append(results[0])
+        return defer.succeed((results, (), ()))
+
     def delZone(self, zone_name):
         if self.zones[zone_name]:
             del self.zones[zone_name]
+            print 'Deleting zone', zone_name
 
     def addRecord(self, zone_name, ttl, type, subdomain, cls, rdata):
         if not self.zones[zone_name]:
             self.zones[zone_name] = {}
 
-        domain = subdomain + '.' + zone_name
+        if subdomain == '@':
+            domain = zone_name
+        else:
+            domain = subdomain + '.' + zone_name
 
         record = getattr(dns, 'Record_%s' % type, None)
         if not record:
