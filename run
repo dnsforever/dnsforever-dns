@@ -9,19 +9,13 @@ from twisted.names.server import DNSServerFactory
 from dnsforever.authority import DnsforeverAuthority
 
 
-authority = DnsforeverAuthority('1.1.1.1')
-verbosity = 0
-
-factory = DNSServerFactory(authorities=[authority],
-                           verbose=verbosity)
-
-protocol = DNSDatagramProtocol(factory)
-factory.noisy = protocol.noisy = verbosity
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run dnsforever domain name '
                                                  'server.')
+
+    parser.add_argument('server', type=str)
     parser.add_argument('--port', '-p',
                         type=int, default=53,
                         help='Specifies the port on which the server listens '
@@ -32,8 +26,16 @@ if __name__ == '__main__':
                              'which server should update its records. '
                              'The default is 60 seconds.')
 
-
     args = parser.parse_args()
+
+    authority = DnsforeverAuthority(args.server)
+    verbosity = 0
+
+    factory = DNSServerFactory(authorities=[authority],
+                               verbose=verbosity)
+
+    protocol = DNSDatagramProtocol(factory)
+    factory.noisy = protocol.noisy = verbosity
 
     reactor.listenUDP(args.port, protocol)
     reactor.listenTCP(args.port, factory)

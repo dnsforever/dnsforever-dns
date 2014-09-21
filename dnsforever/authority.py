@@ -1,10 +1,13 @@
 
 import os
+import json
+
 from collections import defaultdict
 
 from twisted.internet import defer
 from twisted.names import dns, common, error
 from twisted.python import failure
+from twisted.web.client import getPage
 
 class DnsforeverAuthority(common.ResolverBase):
     """
@@ -27,11 +30,16 @@ class DnsforeverAuthority(common.ResolverBase):
         self.zones = defaultdict(lambda: None)
 
     def update(self):
-        self.delZone('dnsforever.kr')
+        def http_callback(data):
+            data = json.loads(data)
+            for (zone, records) in data.items():
+                self.delZone(zone)
+                for record in records:
+                    record = record.split()
+                    self.addRecord(zone, 300, record[1], record[0], 'IN', record[2:])
 
-        self.addRecord('dnsforever.kr', 300, 'A', '@', 'IN', ['1.2.3.4'])
-        self.addRecord('dnsforever.kr', 300, 'A', 'www', 'IN', ['1.2.3.4'])
-        #self.addRecord('test.dnsforever.kr', 300, dns.A, 'www', 'IN', ['1.2.3.4'])
+        page = getPage('http://%s/apis/server/update' % self.serverAddr)
+        page.addCallbacks(callback=http_callback)
 
     def _additionalRecords(self, answer, authority):
         """
