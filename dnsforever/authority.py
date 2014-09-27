@@ -38,8 +38,8 @@ class DnsforeverAuthority(common.ResolverBase):
                 self.last_update = info['last_update']
                 self.delZone(name)
                 for record in info['records']:
-                    record = record.split()
-                    self.addRecord(name, 300, record[1], record[0], 'IN', record[2:])
+                    record = record.split(None, 2)
+                    self.addRecord(name, 300, record[1], record[0], 'IN', record[2])
 
         page = getPage('http://%s/apis/server/update?last_update=%s' % (self.serverAddr, self.last_update))
         page.addCallbacks(callback=http_callback)
@@ -213,6 +213,11 @@ class DnsforeverAuthority(common.ResolverBase):
         record = getattr(dns, 'Record_%s' % type, None)
         if not record:
             raise NotImplementedError, "Record type %r not supported" % type
+
+        if type in ['TXT']:
+            rdata = [str(rdata)]
+        else:
+            rdata = rdata.split()
 
         r = record(*rdata)
         r.ttl = ttl
