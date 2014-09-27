@@ -58,7 +58,6 @@ class DnsforeverAuthority(common.ResolverBase):
 
         for i in range(len(labels), 0, -1):
             zone_name = '.'.join(labels[-i:])
-            print zone_name
             if self.zones[zone_name]:
                 return self.zones[zone_name]
 
@@ -86,7 +85,6 @@ class DnsforeverAuthority(common.ResolverBase):
             if record.type in self._ADDITIONAL_PROCESSING_TYPES:
                 name = record.payload.name.name
                 records = self._lookup_records(name)
-                print records
                 if not records:
                     continue
 
