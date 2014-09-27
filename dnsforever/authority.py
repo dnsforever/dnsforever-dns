@@ -9,6 +9,7 @@ from twisted.names import dns, common, error
 from twisted.python import failure
 from twisted.web.client import getPage
 
+
 class DnsforeverAuthority(common.ResolverBase):
     """
     An Authority that is loaded from a master server.
@@ -28,18 +29,40 @@ class DnsforeverAuthority(common.ResolverBase):
         common.ResolverBase.__init__(self)
         self.serverAddr = serverAddr
         self.zones = defaultdict(lambda: None)
+        self.last_update = 0
 
     def update(self):
         def http_callback(data):
             data = json.loads(data)
-            for (zone, records) in data.items():
-                self.delZone(zone)
-                for record in records:
+            for (name, info) in data.items():
+                self.last_update = info['last_update']
+                self.delZone(name)
+                for record in info['records']:
                     record = record.split()
-                    self.addRecord(zone, 300, record[1], record[0], 'IN', record[2:])
+                    self.addRecord(name, 300, record[1], record[0], 'IN', record[2:])
 
-        page = getPage('http://%s/apis/server/update' % self.serverAddr)
+        page = getPage('http://%s/apis/server/update?last_update=%s' % (self.serverAddr, self.last_update))
         page.addCallbacks(callback=http_callback)
+
+    @property
+    def last_update(self):
+        return self._last_update
+
+    @last_update.setter
+    def last_update(self, t):
+        if self._last_update < t:
+            self._last_update = t
+
+    def _lookup_records(self, name):
+        labels = name.lower().split('.')
+
+        for i in range(len(labels), 0, -1):
+            zone_name = '.'.join(labels[-i:])
+            print zone_name
+            if self.zones[zone_name]:
+                return self.zones[zone_name]
+
+        return None
 
     def _additionalRecords(self, answer, authority):
         """
@@ -62,7 +85,12 @@ class DnsforeverAuthority(common.ResolverBase):
         for record in answer + authority:
             if record.type in self._ADDITIONAL_PROCESSING_TYPES:
                 name = record.payload.name.name
-                for rec in self.records.get(name.lower(), ()):
+                records = self._lookup_records(name)
+                print records
+                if not records:
+                    continue
+
+                for rec in records.get(name.lower(), ()):
                     if rec.TYPE in self._ADDRESS_TYPES:
                         yield dns.RRHeader(
                             name, rec.TYPE, dns.IN,
