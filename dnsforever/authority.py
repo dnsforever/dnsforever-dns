@@ -59,9 +59,9 @@ class DnsforeverAuthority(common.ResolverBase):
         for i in range(len(labels), 0, -1):
             zone_name = '.'.join(labels[-i:])
             if self.zones[zone_name]:
-                return self.zones[zone_name]
+                return self.zones[zone_name], name
 
-        return None
+        return None, name
 
     def _additionalRecords(self, answer, authority):
         """
@@ -84,7 +84,7 @@ class DnsforeverAuthority(common.ResolverBase):
         for record in answer + authority:
             if record.type in self._ADDITIONAL_PROCESSING_TYPES:
                 name = record.payload.name.name
-                records = self._lookup_records(name)
+                records, zone_name = self._lookup_records(name)
                 if not records:
                     continue
 
@@ -123,16 +123,11 @@ class DnsforeverAuthority(common.ResolverBase):
         authority = []
         additional = []
 
-        zone_name = name.lower()
-        while zone_name:
-            if self.zones[zone_name]:
-                domain_zone = self.zones[zone_name]
-                break
+        print '%s %s' % (name, dns.QUERY_TYPES[type])
 
-            if zone_name.find('.') != -1:
-                zone_name = zone_name.split('.', 1)[1]
-            else:
-                return defer.fail(failure.Failure(error.DomainError(name)))
+        domain_zone, zone_name = self._lookup_records(name.lower())
+        if not domain_zone:
+            return defer.fail(failure.Failure(error.DomainError(name)))
 
         domain_records = domain_zone.get(name.lower())
         if not domain_records:
@@ -141,7 +136,7 @@ class DnsforeverAuthority(common.ResolverBase):
         for record in domain_records:
             ttl = record.ttl
 
-            if record.TYPE == dns.NS and name.lower() != self.soa[0].lower():
+            if record.TYPE == dns.NS and name.lower() != zone_name.lower():
                 # NS record belong to a child zone: this is a referral.  As
                 # NS records are authoritative in the child zone, ours here
                 # are not.  RFC 2181, section 6.1.
@@ -156,6 +151,8 @@ class DnsforeverAuthority(common.ResolverBase):
                 cnames.append(
                     dns.RRHeader(name, record.TYPE, dns.IN, ttl, record, auth=True)
                 )
+            if record.TYPE == dns.SOA:
+                soa = record
         if not results:
             results = cnames
 
@@ -171,8 +168,9 @@ class DnsforeverAuthority(common.ResolverBase):
             # Empty response. Include SOA record to allow clients to cache
             # this response.  RFC 1034, sections 3.7 and 4.3.4, and RFC 2181
             # section 7.1.
+
             authority.append(
-                dns.RRHeader(self.soa[0], dns.SOA, dns.IN, ttl, self.soa[1], auth=True)
+                dns.RRHeader(zone_name, dns.SOA, dns.IN, ttl, soa, auth=True)
                 )
         return defer.succeed((results, authority, additional))
 
@@ -217,7 +215,7 @@ class DnsforeverAuthority(common.ResolverBase):
         if type in ['TXT']:
             rdata = [str(rdata)]
         else:
-            rdata = rdata.split()
+            rdata = str(rdata).split()
 
         r = record(*rdata)
         r.ttl = ttl
@@ -225,5 +223,3 @@ class DnsforeverAuthority(common.ResolverBase):
         self.zones[zone_name].setdefault(domain.lower(), []).append(r)
 
         print 'Adding IN Record', domain, ttl, r
-        # if type == 'SOA':
-        #     self.soa = (domain, r)
